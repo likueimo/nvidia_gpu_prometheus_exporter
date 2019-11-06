@@ -192,6 +192,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			c.fanSpeed.WithLabelValues(minor, uuid, name).Set(float64(fanSpeed))
 		}*/
 	}
+	c.numDevices.Collect(ch)
 	c.usedMemory.Collect(ch)
 	c.totalMemory.Collect(ch)
 	c.dutyCycle.Collect(ch)
