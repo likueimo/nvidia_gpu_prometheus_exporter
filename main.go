@@ -19,7 +19,7 @@ const (
 var (
 	addr = flag.String("web.listen-address", ":9445", "Address to listen on for web interface and telemetry.")
 
-	labels = []string{"minor_number", "uuid", "name"}
+	labels = []string{"minor_number", "uuid", "name", "host"}
 )
 
 type Collector struct {
