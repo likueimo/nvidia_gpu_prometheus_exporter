@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-
+	"os"
 	"github.com/mindprince/gonvml"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -24,7 +24,7 @@ var (
 
 type Collector struct {
 	sync.Mutex
-	numDevices  prometheus.Gauge
+	numDevices  *prometheus.GaugeVec
 	usedMemory  *prometheus.GaugeVec
 	totalMemory *prometheus.GaugeVec
 	dutyCycle   *prometheus.GaugeVec
@@ -35,12 +35,13 @@ type Collector struct {
 
 func NewCollector() *Collector {
 	return &Collector{
-		numDevices: prometheus.NewGauge(
+		numDevices: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
 				Name:      "num_devices",
 				Help:      "Number of GPU devices",
 			},
+			[]string{"host"},
 		),
 		usedMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -94,7 +95,7 @@ func NewCollector() *Collector {
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.numDevices.Desc()
+	c.numDevices.Describe(ch)
 	c.usedMemory.Describe(ch)
 	c.totalMemory.Describe(ch)
 	c.dutyCycle.Describe(ch)
@@ -107,21 +108,26 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	// Only one Collect call in progress at a time.
 	c.Lock()
 	defer c.Unlock()
-
+	c.numDevices.Reset()
 	c.usedMemory.Reset()
 	c.totalMemory.Reset()
 	c.dutyCycle.Reset()
 	c.powerUsage.Reset()
 	c.temperature.Reset()
 	c.fanSpeed.Reset()
-
+	
+	host, err := os.Hostname()
+	if err != nil {
+		log.Printf("Hosename() error: %v", err)
+		os.Exit(1)
+	}
+	
 	numDevices, err := gonvml.DeviceCount()
 	if err != nil {
 		log.Printf("DeviceCount() error: %v", err)
 		return
 	} else {
-		c.numDevices.Set(float64(numDevices))
-		ch <- c.numDevices
+		c.numDevices.WithLabelValues(host).Set(float64(numDevices))
 	}
 
 	for i := 0; i < int(numDevices); i++ {
@@ -154,37 +160,37 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		if err != nil {
 			log.Printf("MemoryInfo() error: %v", err)
 		} else {
-			c.usedMemory.WithLabelValues(minor, uuid, name).Set(float64(usedMemory))
-			c.totalMemory.WithLabelValues(minor, uuid, name).Set(float64(totalMemory))
+			c.usedMemory.WithLabelValues(minor, uuid, name, host).Set(float64(usedMemory))
+			c.totalMemory.WithLabelValues(minor, uuid, name, host).Set(float64(totalMemory))
 		}
 
 		dutyCycle, _, err := dev.UtilizationRates()
 		if err != nil {
 			log.Printf("UtilizationRates() error: %v", err)
 		} else {
-			c.dutyCycle.WithLabelValues(minor, uuid, name).Set(float64(dutyCycle))
+			c.dutyCycle.WithLabelValues(minor, uuid, name, host).Set(float64(dutyCycle))
 		}
 
 		powerUsage, err := dev.PowerUsage()
 		if err != nil {
 			log.Printf("PowerUsage() error: %v", err)
 		} else {
-			c.powerUsage.WithLabelValues(minor, uuid, name).Set(float64(powerUsage))
+			c.powerUsage.WithLabelValues(minor, uuid, name, host).Set(float64(powerUsage))
 		}
 
 		temperature, err := dev.Temperature()
 		if err != nil {
 			log.Printf("Temperature() error: %v", err)
 		} else {
-			c.temperature.WithLabelValues(minor, uuid, name).Set(float64(temperature))
+			c.temperature.WithLabelValues(minor, uuid, name, host).Set(float64(temperature))
 		}
 
-		fanSpeed, err := dev.FanSpeed()
+		/*fanSpeed, err := dev.FanSpeed()
 		if err != nil {
 			log.Printf("FanSpeed() error: %v", err)
 		} else {
 			c.fanSpeed.WithLabelValues(minor, uuid, name).Set(float64(fanSpeed))
-		}
+		}*/
 	}
 	c.usedMemory.Collect(ch)
 	c.totalMemory.Collect(ch)
